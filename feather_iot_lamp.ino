@@ -9,15 +9,23 @@
   #include <avr/power.h>
 #endif
 
+//#define DEBUG
+#ifdef DEBUG
+  #define DEBUG(x)  Serial.println(x)
+#else
+  #define DEBUG(x)
+#endif
+
 #define PIN 4
 #define NUMPIXELS      25
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const char* ssid     = "<YOUR SSID>";
-const char* password = "<YOUR PASSWORD>";
+const char* SSID     = "<SSID>";
+const char* PASSWORD = "<PASSWORD>";
 
 ESP8266WebServer server(80);
 String webString="";
+String LAMPIP;
 
 #if (SSD1306_LCDHEIGHT != 32)
  #error("Height incorrect, please fix Adafruit_SSD1306.h!");
@@ -25,65 +33,76 @@ String webString="";
 
 Adafruit_SSD1306 display = Adafruit_SSD1306();
 
-int delayval = 500; // delay for half a second
 uint32_t red = strip.Color(255, 0, 0);
 uint32_t green = strip.Color(0, 255, 0);
-uint32_t yellow = strip.Color(255, 255, 0);
+uint32_t yellow = strip.Color(128, 128, 0);
 uint32_t off = strip.Color(0,0,0);
 
 void setup() {
+  Serial.begin(115200);
+  WiFi.begin(SSID, PASSWORD);
 
-  WiFi.begin(ssid, password);
-
-  Serial.println("OLED FeatherWing test");
-  // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)
+  DEBUG("OLED FeatherWing test");
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);  // initialize with the I2C addr 0x3C (for the 128x32)
-  // init done
-  Serial.println("OLED begun");
-  
-  // Show image buffer on the display hardware.
-  // Since the buffer is intialized with an Adafruit splashscreen
-  // internally, this will display the splashscreen.
-  display.display();
-  delay(1000);
+  DEBUG("OLED begun");
 
-  // Clear the buffer.
+  DEBUG("Initializing display");
+  display.display();
+
+  DEBUG("Clearing display buffer");
   display.clearDisplay();
   display.display();
 
+  DEBUG("Setting text properties and positioning cursor");
   display.setTextSize(1);
   display.setTextColor(WHITE);
   display.setCursor(0,0);
+  DEBUG("Connecting to WiFi");
   display.print("Connecting.");
   display.display();
   while(WiFi.status() != WL_CONNECTED){
+    DEBUG("...waiting");
     delay(500);
     display.print(".");
     display.display();
   }
+  DEBUG("WiFi connected");
+  DEBUG("Get IP address");
+  LAMPIP = WiFi.localIP().toString();
   display.clearDisplay();
   display.display();
   display.setCursor(0,0);
+  DEBUG("IP: " + LAMPIP);
   display.print("IP:");
-  display.println(WiFi.localIP());
+  display.println(LAMPIP);
   display.display();
-  
+
+  DEBUG("Initialize webserver");
   server.on("/", handle_root);
   server.on("/red", [](){
+    DEBUG("Illuminating lamp with red");
     alert_color(red);
   });
   server.on("/green", [](){
+    DEBUG("Illuminating lamp with green");
     alert_color(green);
   });
   server.on("/yellow", [](){
+    DEBUG("Illuminating lamp with yellow");
     alert_color(yellow);
   });
-  
   server.begin();
+  DEBUG("Webserver started");
   display.setCursor(0,10);
   display.println("Server online.");
   display.display();
-  strip.begin(); // This initializes the NeoPixel library.
+  DEBUG("Initialize NeoPixels and set to green");
+  strip.begin();
+  for(int i=0;i<NUMPIXELS;i++){
+    strip.setPixelColor(i, green);
+  }
+  strip.show();
+  DEBUG("---");
 }
 
 void loop() {
@@ -91,36 +110,41 @@ void loop() {
 }
 
 void handle_root(){
+  DEBUG("Processing root page request...");
   alert_color(off);
   server.send ( 200, "text/html", "hello world");
 }
 
 void alert_color(uint32_t c){
   String s;
-
+  DEBUG("Update alert status text");
   if(c == red){
-    s = "red";
+    s = "Critcal Alert!";
   } else if( c == green){
-    s = "green";
+    s = "All systems Go!";
   } else if (c == yellow){
-    s = "yellow";
+    s = "Caution!";
   } else {
-    s = "nominal";   
+    s = "nominal";
   }
+  DEBUG("Alert Status: " + s);
+  /*DEBUG("Reset display and position cursor");
   display.clearDisplay();
   display.display();
   display.setCursor(0,0);
   display.print("IP:");
-  display.println(WiFi.localIP());
+  display.println(LAMPIP);
   display.setCursor(0,10);
   display.println("Alert Status:" + s);
   display.display();
-  strip.begin();
+  DEBUG("Reinitialze Neopixels");
+  strip.begin();*/
+  DEBUG("Update Neopixel color");
   for(int i=0;i<NUMPIXELS;i++){
-    strip.setPixelColor(i, c); // Moderately bright green color.
-    strip.show(); // This sends the updated pixel color to the hardware.
-    //delay(500);
+    strip.setPixelColor(i, c);
   }
-  
-  server.send ( 200, "text/html", "status:" + s);
+  strip.show();
+  DEBUG("Return 200 response");
+  DEBUG("---");
+  server.send ( 200, "text/html", "Alert Status:" + s);
 }
